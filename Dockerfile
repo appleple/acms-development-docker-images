@@ -1,4 +1,7 @@
-FROM php:8.3-apache
+FROM php:8.4-apache-bookworm
+
+# ロケール設定（文字化け対策）
+ENV LANG=C.UTF-8
 
 # extension
 RUN apt-get update \
@@ -6,7 +9,6 @@ RUN apt-get update \
         libfreetype6-dev \
         libmagickwand-dev \
         libjpeg62-turbo-dev \
-        libmcrypt-dev \
         libpng-dev \
         libicu-dev \
         libzip-dev \
@@ -37,23 +39,17 @@ RUN apt-get update \
     && docker-php-ext-enable apcu \
     && docker-php-ext-enable redis \
     && ln -s /usr/bin/python3 /usr/bin/python \
-    && a2enmod headers \
-    && a2enmod mime \
-    && a2enmod expires \
-    && a2enmod deflate
+    && a2enmod headers mime expires deflate rewrite ssl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # composer
-RUN curl -S https://getcomposer.org/installer | php \
-    && mv composer.phar /usr/local/bin/composer \
-    && composer self-update
+RUN curl -sS https://getcomposer.org/installer | php \
+    && mv composer.phar /usr/local/bin/composer
 
 # node
-RUN curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.33.11/install.sh | bash \
-    && export NVM_DIR="$HOME/.nvm" \
-    && . $NVM_DIR/nvm.sh \
-    && nvm install v14.16.0 \
-    && nvm use v14.16.0 \
-    && nvm alias default v14.16.0 \
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
     && npm install -g npm
 
 # php.ini
@@ -61,10 +57,8 @@ COPY config/php.ini /usr/local/etc/php/
 
 # apache
 RUN echo "Mutex posixsem" >> /etc/apache2/apache2.conf
-RUN a2enmod rewrite
-RUN a2enmod ssl
 
 COPY entrypoint.sh /usr/local/bin/
-RUN ["chmod", "+x", "/usr/local/bin/entrypoint.sh"]
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
