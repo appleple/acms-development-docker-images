@@ -50,23 +50,23 @@ services:
     environment:
       APACHE_DOCUMENT_ROOT: /var/www/html
       # Xdebug を使う場合のみ true にする（既定は無効）
-      # ACMS_XDEBUG: "true"
+      # XDEBUG: "true"
       # Linux ホストでボリューム所有権を合わせたい場合（任意）
-      # ACMS_UID: "1000"
-      # ACMS_GID: "1000"
+      # PUID: "1000"
+      # PGID: "1000"
 ```
 
 ```sh
 docker compose up
 ```
 
-> `ACMS_UID`/`ACMS_GID` を渡すと Apache 実行ユーザ(www-data)の uid/gid をホストに合わせ、
+> `PUID`/`PGID` を渡すと Apache 実行ユーザ(www-data)の uid/gid をホストに合わせ、
 > マウント先に生成されるファイルの所有権ずれ（主に Linux ホスト）を防げます。macOS/Windows では通常不要です。
 
 ## Xdebug
 
 Xdebug はイメージに同梱されており、**専用イメージ（`-xdebug`）は不要**です。
-環境変数 `ACMS_XDEBUG=true` を渡すと起動時に有効化されます（同時に opcache は無効化）。
+環境変数 `XDEBUG=true` を渡すと起動時に有効化されます（同時に opcache は無効化）。
 設定は [`config/xdebug.ini`](config/xdebug.ini) にあり、IDE はポート `9003` で待ち受ける想定です。
 
 ## テスト・カバレッジ（コア開発向け）
@@ -79,7 +79,7 @@ Xdebug はイメージに同梱されており、**専用イメージ（`-xdebug
   設定は [`config/pcov.ini`](config/pcov.ini)。対象を絞る場合は `pcov.directory` を指定。
 - **exif** 拡張を同梱しています（EXIF Orientation を使う画像回転処理・テスト向け）。
 - カバレッジは PCOV と Xdebug のどちらか一方のみ使用してください（併用は非対応）。
-  ステップ実行が必要なときだけ `ACMS_XDEBUG=true`、カバレッジは PCOV が推奨です。
+  ステップ実行が必要なときだけ `XDEBUG=true`、カバレッジは PCOV が推奨です。
 
 > Node.js は同梱していません。テーマ／アセットのビルドはホストまたは別コンテナで行ってください。
 

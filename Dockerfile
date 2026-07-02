@@ -15,7 +15,7 @@ ARG PCOV_VERSION=1.0.12
 
 # ---- OS パッケージ & PHP 拡張 ----
 # xdebug/pcov は常時インストールしておき、有効化は実行時に行う。
-#  - xdebug: ACMS_XDEBUG=true のときだけ entrypoint が有効化（-xdebug 専用イメージ不要）
+#  - xdebug: XDEBUG=true のときだけ entrypoint が有効化（-xdebug 専用イメージ不要）
 #  - pcov:   既定は pcov.enabled=0（カバレッジ取得時のみ -d pcov.enabled=1）
 # OPcache は PHP 8.5 で静的組込みのため install せず、未ロード時のみ enable する
 # （8.0=要enable / 8.3=標準で有効 / 8.5=静的、を1行で吸収）。
