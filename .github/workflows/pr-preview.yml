@@ -1,0 +1,99 @@
+# Pull Request ごとに GHCR へプレビューイメージを公開する（レビュアーが pull 可能）。
+# タグ例: ghcr.io/<owner>/<repo>/acms-dev:8.5-<PR番号>
+#
+# 速度重視の構成：
+#  - PR では amd64 のみ（QEMU エミュレーションを使わない）。arm64 は本番 build.yml で。
+#  - PHP バージョンごとに matrix で別 runner に分散（並列）。
+#  - 対象バージョンは docker-bake.hcl から動的取得（二重管理しない）。
+# フォークからの PR は GITHUB_TOKEN に packages:write が無いため、ビルド検証のみ。
+name: Build preview images (PR)
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'entrypoint.sh'
+      - 'config/**'
+      - 'docker-bake.hcl'
+      - '.github/workflows/pr-preview.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  prepare:
+    name: Resolve build matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Resolve targets from docker-bake.hcl
+        id: gen
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix="$(docker buildx bake --print | jq -c '{include: [.target | to_entries[] | {version: .value.args.PHP_VERSION, target: .key}]}')"
+          if [ -z "$matrix" ] || [ "$matrix" = "null" ]; then
+            echo "::error::failed to resolve bake targets from docker-bake.hcl"
+            exit 1
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: acms-dev:${{ matrix.version }} (amd64)
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    env:
+      # 同一リポジトリの PR のみ GHCR へ push（フォークは検証のみ）
+      IS_INTERNAL: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+      # bake の HCL 変数は同名の環境変数で上書きできる。
+      # GHCR 名前空間はリポジトリ名に自動追従（改名にも強い）
+      REGISTRY: ghcr.io/${{ github.repository }}
+      PR_TAG: -${{ github.event.number }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Login to GHCR
+        if: ${{ env.IS_INTERNAL == 'true' }}
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (amd64; push preview when internal)
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        with:
+          source: .
+          targets: ${{ matrix.target }}
+          push: ${{ env.IS_INTERNAL == 'true' }}
+          set: |
+            *.platform=linux/amd64
+            *.cache-from=type=gha,scope=${{ matrix.target }}
+            *.cache-to=type=gha,mode=max,scope=${{ matrix.target }}

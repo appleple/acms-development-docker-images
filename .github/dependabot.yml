@@ -1,0 +1,14 @@
+# GitHub Actions の更新を自動追従する（週次）。
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 20
+    groups:
+      github-actions:
+        update-types:
+          - minor
+          - patch
