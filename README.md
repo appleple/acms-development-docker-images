@@ -1,4 +1,4 @@
-# a-blog cms Docker Images
+# a-blog cms Development Docker Images
 
 a-blog cms 開発用の **実行環境イメージ（Apache + PHP、a-blog cms 非同梱）** です。
 自分の a-blog cms プロジェクトをマウントして使います。
