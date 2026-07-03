@@ -103,7 +103,7 @@ docker buildx bake --push
 
 ### CI（GitHub Actions）
 
-- `build.yml` — `master` への push / 週次 / 手動実行で **Docker Hub (`appleple/acms-dev`) へマルチアーキ公開**（provenance / SBOM 添付）。
+- `build.yml` — `master` への push / 週次 / 手動実行で **Docker Hub (`appleple/acms-dev`) へマルチアーキ公開**（バージョン別 matrix 並列、provenance / SBOM 添付）。
 - `pr-preview.yml` — Pull Request で **GHCR にプレビューイメージを公開**（`ghcr.io/<owner>/<repo>/acms-dev:<ver>-<PR番号>`、amd64・バージョン別 matrix）。フォークからの PR はビルド検証のみ。
 - `lint.yml` — `actionlint` によるワークフロー静的検査。
 
