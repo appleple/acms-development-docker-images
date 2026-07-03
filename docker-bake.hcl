@@ -74,7 +74,7 @@ target "acms-dev" {
 
   labels = {
     "org.opencontainers.image.title"       = "a-blog cms dev runtime (PHP ${php})"
-    "org.opencontainers.image.source"      = "https://github.com/appleple/docker-acms"
+    "org.opencontainers.image.source"      = "https://github.com/appleple/acms-development-docker-images"
     "org.opencontainers.image.description" = "Apache + PHP ${php} runtime for a-blog cms development (a-blog cms is NOT bundled; mount your project)"
   }
 }
