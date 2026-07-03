@@ -21,7 +21,10 @@ jobs:
       contents: read
     env:
       PR_NUMBER: ${{ github.event.number }}
-      PACKAGE_NAME: acms-dev
+      # GHCR のパッケージ名は ghcr.io/<owner>/ の後ろのパス全体
+      # （リポジトリ名/イメージ名）になる。単なるイメージ名（acms-dev）だけでは
+      # 存在しないパッケージとして 404 になるため注意。
+      PACKAGE_NAME: ${{ github.event.repository.name }}/acms-dev
       OWNER: ${{ github.repository_owner }}
 
     steps:
@@ -33,7 +36,7 @@ jobs:
             echo "has_token=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_token=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::GHCR_DELETE_TOKEN が未設定のため、PR プレビューイメージの自動削除をスキップしました。ghcr.io/${OWNER}/<repo>/${PACKAGE_NAME} の '-${PR_NUMBER}' サフィックスのタグは手動削除するか、delete:packages 権限を持つ PAT を GHCR_DELETE_TOKEN に設定してください。"
+            echo "::warning::GHCR_DELETE_TOKEN が未設定のため、PR プレビューイメージの自動削除をスキップしました。ghcr.io/${OWNER}/${PACKAGE_NAME} の '-${PR_NUMBER}' サフィックスのタグは手動削除するか、delete:packages 権限を持つ PAT を GHCR_DELETE_TOKEN に設定してください。"
           fi
 
       - name: Delete preview versions
@@ -42,11 +45,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GHCR_DELETE_TOKEN }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           suffix="-${PR_NUMBER}"
+          # パッケージ名に含まれる "/" は API パスでは %2F にエンコードする
+          encoded_name="$(printf '%s' "$PACKAGE_NAME" | sed 's|/|%2F|g')"
           echo "Package ${PACKAGE_NAME} のバージョンから suffix '${suffix}' を検索します..."
 
-          ids="$(gh api --paginate "/orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions" \
+          raw="$(gh api --paginate "/orgs/${OWNER}/packages/container/${encoded_name}/versions" 2>&1)"
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::GHCR パッケージ '${PACKAGE_NAME}' のバージョン取得に失敗しました（存在しない/非公開/権限不足のいずれかの可能性）。削除はスキップします。詳細: ${raw}"
+            exit 0
+          fi
+
+          ids="$(printf '%s' "$raw" \
             | jq -s 'add' \
             | jq -r --arg suffix "$suffix" \
                 '.[] | select((.metadata.container.tags // []) | any(endswith($suffix))) | .id')"
@@ -58,5 +70,5 @@ jobs:
 
           echo "$ids" | while read -r id; do
             echo "Deleting version id=${id}"
-            gh api --method DELETE "/orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions/${id}"
+            gh api --method DELETE "/orgs/${OWNER}/packages/container/${encoded_name}/versions/${id}"
           done
