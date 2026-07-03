@@ -73,6 +73,11 @@ RUN set -eux; \
     docker-php-ext-enable apcu redis imagick pcov; \
     ln -sf /usr/bin/python3 /usr/bin/python; \
     a2enmod headers mime expires deflate rewrite ssl; \
+    # www-data のホームは既定で /var/www（= APACHE_DOCUMENT_ROOT の親）。
+    # 一部の Debian 版(shadow-utils)は usermod -u 実行時にホーム配下を再帰 chown する
+    # ため、PUID/PGID でマウント済みプロジェクト全体が巻き込まれ得る。
+    # ホームを無関係な場所へ切り離し、entrypoint.sh 側は変更せずに無効化する。
+    usermod -d /nonexistent www-data; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git diff *)",
+      "Read(//private/tmp/**)",
+      "Bash(docker rmi *)"
+    ]
+  }
+}
