@@ -30,7 +30,7 @@ variable "IMAGE_NAME" {
 
 # latest タグを付与するバージョン
 variable "PHP_LATEST" {
-  default = "8.3"
+  default = "8.5"
 }
 
 # PR プレビュー用のタグ接尾辞（CI が -<PR番号> を渡す想定。通常は空）
