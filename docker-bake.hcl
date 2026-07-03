@@ -24,9 +24,6 @@ variable "REGISTRY" {
 }
 
 # このリポジトリが作るのは「実行環境のみ（a-blog cms 非同梱）」のイメージ。
-# 名前空間の設計:
-#   appleple/acms      … 将来の「a-blog cms 同梱・すぐ動く」プロダクト（別途、private 想定）
-#   appleple/acms-dev  … 本リポジトリが公開する実行環境（非同梱・マウント運用）
 variable "IMAGE_NAME" {
   default = "acms-dev"
 }
@@ -48,7 +45,7 @@ variable "PLATFORMS" {
 
 # ---- ここがバージョン一覧の唯一の定義箇所 ----
 variable "PHP_VERSIONS" {
-  default = ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"]
+  default = ["7.2", "7.3", "7.4", "8.0", "8.1", "8.2", "8.3", "8.4", "8.5"]
 }
 
 group "default" {

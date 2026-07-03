@@ -5,8 +5,8 @@
 ARG PHP_VERSION=8.3
 FROM php:${PHP_VERSION}-apache
 
-# pecl 拡張のバージョンは再現性のため固定（PHP 8.0〜8.5 でビルド確認済み）。
-# 更新は手動（dependabot は pecl を追わない）。新 PHP 対応時はここを見直す。
+# pecl 拡張の既定バージョン（新しめの PHP 用。再現性のため固定）。
+# 古い PHP では下の RUN 内で対応する旧版へ自動的に切り替える。
 ARG APCU_VERSION=5.1.28
 ARG REDIS_VERSION=6.3.0
 ARG IMAGICK_VERSION=3.8.1
@@ -17,9 +17,17 @@ ARG PCOV_VERSION=1.0.12
 # xdebug/pcov は常時インストールしておき、有効化は実行時に行う。
 #  - xdebug: XDEBUG=true のときだけ entrypoint が有効化（-xdebug 専用イメージ不要）
 #  - pcov:   既定は pcov.enabled=0（カバレッジ取得時のみ -d pcov.enabled=1）
-# OPcache は PHP 8.5 で静的組込みのため install せず、未ロード時のみ enable する
-# （8.0=要enable / 8.3=標準で有効 / 8.5=静的、を1行で吸収）。
+# OPcache は PHP 8.5 で静的組込みのため install せず、未ロード時のみ enable する。
+# PHP 7.x 対応のため、apt ソース(archive)・gd フラグ・redis/xdebug の版を分岐する。
 RUN set -eux; \
+    PHP_ID="$(php -r 'echo PHP_VERSION_ID;')"; \
+    # 旧 Debian（buster/stretch）はアーカイブへ切替（apt-get update を通すため）
+    . /etc/os-release; \
+    case "${VERSION_CODENAME:-}" in \
+        buster|stretch) \
+            sed -i 's|deb.debian.org|archive.debian.org|g; s|security.debian.org|archive.debian.org|g; /-updates/d' /etc/apt/sources.list; \
+            ;; \
+    esac; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         libfreetype6-dev \
@@ -42,15 +50,25 @@ RUN set -eux; \
         zip \
         unzip \
     ; \
-    docker-php-ext-configure gd --with-freetype --with-jpeg; \
+    # gd の configure フラグは PHP 7.4 で変わる
+    if [ "$PHP_ID" -ge 70400 ]; then \
+        docker-php-ext-configure gd --with-freetype --with-jpeg; \
+    else \
+        docker-php-ext-configure gd --with-freetype-dir=/usr --with-jpeg-dir=/usr; \
+    fi; \
     docker-php-ext-install -j"$(nproc)" gd zip; \
     docker-php-ext-install mbstring gettext pdo_mysql mysqli bcmath exif; \
     docker-php-ext-enable mysqli; \
     php -m | grep -qi 'Zend OPcache' || docker-php-ext-enable opcache; \
+    # 版依存の pecl 拡張（古い PHP では対応する旧版へフォールバック）
+    REDIS_VER="$REDIS_VERSION"; \
+    XDEBUG_VER="$XDEBUG_VERSION"; \
+    if [ "$PHP_ID" -lt 70400 ]; then REDIS_VER=5.3.7; fi; \
+    if [ "$PHP_ID" -lt 80000 ]; then XDEBUG_VER=3.1.6; fi; \
     pecl install "apcu-${APCU_VERSION}"; \
-    pecl install "redis-${REDIS_VERSION}"; \
+    pecl install "redis-${REDIS_VER}"; \
     pecl install "imagick-${IMAGICK_VERSION}"; \
-    pecl install "xdebug-${XDEBUG_VERSION}"; \
+    pecl install "xdebug-${XDEBUG_VER}"; \
     pecl install "pcov-${PCOV_VERSION}"; \
     docker-php-ext-enable apcu redis imagick pcov; \
     ln -sf /usr/bin/python3 /usr/bin/python; \
