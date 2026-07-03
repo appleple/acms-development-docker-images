@@ -34,25 +34,28 @@ else
     echo "[entrypoint] Xdebug: disabled"
 fi
 
-# document root
+# --- DocumentRoot の反映 ---
+# 状態ファイルで「初回かどうか」を判定するのではなく、ビルド時に退避した
+# オリジナルの設定ファイル(*.orig)から毎回冪等に再生成する。これにより
+# 再起動のたびに APACHE_DOCUMENT_ROOT の最新値が確実に反映される。
+# 置換先の値に sed のメタ文字（/ & \）が含まれても壊れないようエスケープする。
 echo "${APACHE_DOCUMENT_ROOT}"
 
-INIT_FILE="/var/www/init.txt"
-
-if test "${APACHE_DOCUMENT_ROOT}" != ""; then
-    if [ ! -e $INIT_FILE ]; then
-        sed -ri -e "s!/var/www/html!${APACHE_DOCUMENT_ROOT}!g" /etc/apache2/sites-available/*.conf
-        sed -ri -e "s!/var/www/!${APACHE_DOCUMENT_ROOT}!g" /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
-        touch $INIT_FILE
-    fi
+if [ -n "${APACHE_DOCUMENT_ROOT}" ]; then
+    esc_root=$(printf '%s' "${APACHE_DOCUMENT_ROOT}" | sed -e 's/[\/&\\]/\\&/g')
+    for f in /etc/apache2/sites-available/*.conf.orig; do
+        sed -re "s/\/var\/www\/html/${esc_root}/g" "$f" > "${f%.orig}"
+    done
+    for f in /etc/apache2/apache2.conf.orig /etc/apache2/conf-available/*.conf.orig; do
+        sed -re "s/\/var\/www\//${esc_root}\//g" "$f" > "${f%.orig}"
+    done
 fi
 
 service sendmail restart
-service apache2 restart
 
-trap 'service apache2 stop; exit 0' TERM
-
-while :
-do
-    sleep 1
-done
+# apache2 をこのシェルの exec で置き換え、PID1 にする。
+# こうすることで apache2 がクラッシュ/OOM-killされた場合にコンテナ自体が
+# 終了し、docker の restart ポリシー（restart: always 等）で正しく
+# 自動復旧できるようになる（バックグラウンド常駐 + sleep ループ方式だと、
+# apache が死んでも PID1 が生き残り「Running」のまま復旧されない）。
+exec /usr/local/bin/apache2-foreground

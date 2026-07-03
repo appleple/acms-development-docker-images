@@ -23,7 +23,7 @@ on:
     - cron: '0 0 * * 0'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions: {}
@@ -47,8 +47,14 @@ jobs:
 
       - name: Resolve targets from docker-bake.hcl
         id: gen
+        shell: bash
         run: |
-          matrix="$(docker buildx bake --print 2>/dev/null | jq -c '{include: [.target | to_entries[] | {version: .value.args.PHP_VERSION, target: .key}]}')"
+          set -euo pipefail
+          matrix="$(docker buildx bake --print | jq -c '{include: [.target | to_entries[] | {version: .value.args.PHP_VERSION, target: .key}]}')"
+          if [ -z "$matrix" ] || [ "$matrix" = "null" ]; then
+            echo "::error::failed to resolve bake targets from docker-bake.hcl"
+            exit 1
+          fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   build:

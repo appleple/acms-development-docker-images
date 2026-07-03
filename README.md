@@ -34,13 +34,12 @@ services:
 
   www:
     image: appleple/acms-dev:8.3
-    privileged: true
+    restart: always
     volumes:
       - ./www:/var/www/html
       - /etc/localtime:/etc/localtime:ro
     ports:
       - "80:80"
-      - "443:443"
     depends_on:
       - mysql
     environment:
@@ -59,6 +58,10 @@ docker compose up
 > `PUID`/`PGID` を渡すと Apache 実行ユーザ(www-data)の uid/gid をホストに合わせ、
 > マウント先に生成されるファイルの所有権ずれ（主に Linux ホスト）を防げます。macOS/Windows では通常不要です。
 
+> `privileged: true` は不要です（entrypoint の処理は通常の root 権限で完結します）。
+> HTTPS を使う場合は自己署名証明書の作成と `a2ensite default-ssl` の有効化が別途必要です
+> （既定では `443` は公開しておらず、SSL 用の vhost も未設定です）。
+
 ## Xdebug
 
 Xdebug はイメージに同梱されており、**専用イメージ（`-xdebug`）は不要**です。
@@ -72,7 +75,12 @@ Xdebug はイメージに同梱されており、**専用イメージ（`-xdebug
   ```sh
   docker compose exec www php -d pcov.enabled=1 vendor/bin/phpunit --coverage-text
   ```
-  設定は [`config/pcov.ini`](config/pcov.ini)。対象を絞る場合は `pcov.directory` を指定。
+  設定は [`config/pcov.ini`](config/pcov.ini) にありますが、これは**ビルド時にイメージへ焼き込まれる**ため、
+  取得済みイメージに対してこのファイルを編集しても反映されません。対象を絞る場合はイメージを再ビルドするか、
+  実行時に `-d` で上書きしてください:
+  ```sh
+  docker compose exec www php -d pcov.enabled=1 -d pcov.directory=/var/www/html vendor/bin/phpunit --coverage-text
+  ```
 - **exif** 拡張を同梱しています（EXIF Orientation を使う画像回転処理・テスト向け）。
 - カバレッジは PCOV と Xdebug のどちらか一方のみ使用してください（併用は非対応）。
   ステップ実行が必要なときだけ `XDEBUG=true`、カバレッジは PCOV が推奨です。
@@ -105,7 +113,18 @@ docker buildx bake --push
 
 - `build.yml` — `master` への push / 週次 / 手動実行で **Docker Hub (`appleple/acms-dev`) へマルチアーキ公開**（バージョン別 matrix 並列、provenance / SBOM 添付）。
 - `pr-preview.yml` — Pull Request で **GHCR にプレビューイメージを公開**（`ghcr.io/<owner>/<repo>/acms-dev:<ver>-<PR番号>`、amd64・バージョン別 matrix）。フォークからの PR はビルド検証のみ。
+- `pr-cleanup.yml` — PR クローズ時に GHCR のプレビュータグ（`-<PR番号>`）を削除。
 - `lint.yml` — `actionlint` によるワークフロー静的検査。
 
 公開には Secrets（`DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`）が必要です。
+PR プレビューのクリーンアップには別途 `GHCR_DELETE_TOKEN`（`delete:packages` / `read:packages` 権限の PAT）が必要です。
+未設定の場合、`pr-cleanup.yml` は削除をスキップし警告を出すだけで失敗はしません。
 Actions は commit SHA でピン留めし、`dependabot` が更新 PR を出します。
+
+## 可用性について
+
+`HEALTHCHECK` は Apache への接続可否を検知しますが、**Docker 単体では `unhealthy` を理由に
+コンテナを自動再起動しません**（`restart` ポリシーはプロセス終了時のみ発火します）。
+本イメージは Apache をコンテナの PID1 として起動するため、Apache がクラッシュすると
+コンテナ自体が終了します。`docker run --restart=always` や compose の `restart: always` を
+指定していれば、その時点で正しく自動復旧します。

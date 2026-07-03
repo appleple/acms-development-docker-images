@@ -1,0 +1,62 @@
+# PR がクローズ（マージ/却下いずれも）されたら、pr-preview.yml が GHCR に
+# 公開したプレビュータグ（acms-dev:<ver>-<PR番号>）を削除する。
+#
+# 注意: GITHUB_TOKEN では GHCR パッケージの削除ができない
+# （GitHub の仕様。delete:packages スコープを持つ PAT が必要）。
+# そのため Secrets に GHCR_DELETE_TOKEN（delete:packages, read:packages）を
+# 設定するまでは、このジョブは警告を出して安全にスキップする。
+name: Clean up PR preview images
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  cleanup:
+    name: Delete GHCR preview tags
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PR_NUMBER: ${{ github.event.number }}
+      PACKAGE_NAME: acms-dev
+      OWNER: ${{ github.repository_owner }}
+
+    steps:
+      - name: Check for GHCR_DELETE_TOKEN
+        id: check
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.GHCR_DELETE_TOKEN }}" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GHCR_DELETE_TOKEN が未設定のため、PR プレビューイメージの自動削除をスキップしました。ghcr.io/${OWNER}/<repo>/${PACKAGE_NAME} の '-${PR_NUMBER}' サフィックスのタグは手動削除するか、delete:packages 権限を持つ PAT を GHCR_DELETE_TOKEN に設定してください。"
+          fi
+
+      - name: Delete preview versions
+        if: steps.check.outputs.has_token == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_DELETE_TOKEN }}
+        run: |
+          set -euo pipefail
+          suffix="-${PR_NUMBER}"
+          echo "Package ${PACKAGE_NAME} のバージョンから suffix '${suffix}' を検索します..."
+
+          ids="$(gh api --paginate "/orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions" \
+            | jq -s 'add' \
+            | jq -r --arg suffix "$suffix" \
+                '.[] | select((.metadata.container.tags // []) | any(endswith($suffix))) | .id')"
+
+          if [ -z "$ids" ]; then
+            echo "削除対象のタグは見つかりませんでした。"
+            exit 0
+          fi
+
+          echo "$ids" | while read -r id; do
+            echo "Deleting version id=${id}"
+            gh api --method DELETE "/orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions/${id}"
+          done

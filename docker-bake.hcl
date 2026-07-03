@@ -67,9 +67,11 @@ target "acms-dev" {
 
   platforms = PLATFORMS
 
+  # latest タグは本番公開時（PR_TAG が空）のときだけ付与する。
+  # PR プレビューでは未文書化の latest-<PR番号> タグが公開されるのを防ぐ。
   tags = concat(
     ["${REGISTRY}/${IMAGE_NAME}:${php}${PR_TAG}"],
-    php == PHP_LATEST ? ["${REGISTRY}/${IMAGE_NAME}:latest${PR_TAG}"] : []
+    (php == PHP_LATEST && PR_TAG == "") ? ["${REGISTRY}/${IMAGE_NAME}:latest"] : []
   )
 
   labels = {
